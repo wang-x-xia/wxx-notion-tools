@@ -132,18 +132,18 @@ def update_and_cost(notion: Client, page, code):
             for op in operations[current]:
                 if op["action"] in ["Buy", "Sell"]:
                     quantity += op["quantity"]
-                    cost_total += op["quantity"] * op["price"] - op["fee"]
+                    cost_total += op["quantity"] * op["price"] + op["fee"]
                 else:
                     found_dividend = True
                     # Remove Dividend from the cost
-                    cost_total += -op["quantity"] * op["price"] - op["fee"]
+                    cost_total += -op["quantity"] * op["price"] + op["fee"]
 
         if not found_dividend and current in dividends:
             dividend = dividends[current]
             # Use 20% as default tax
             print("Update dividend to db", current, quantity, dividend)
             create_operation(notion, code, current, "Dividend", quantity, dividend, quantity * dividend * tax_rate)
-            cost_total -= quantity * dividend * 0.8
+            cost_total -= quantity * dividend * (1 - tax_rate)
 
         current = current + timedelta(days=1)
 
