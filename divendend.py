@@ -130,9 +130,12 @@ def update_and_cost(notion: Client, page, code):
 
         if current in operations:
             for op in operations[current]:
-                if op["action"] in ["Buy", "Sell"]:
+                if op["action"] == "Buy":
                     quantity += op["quantity"]
                     cost_total += op["quantity"] * op["price"] + op["fee"]
+                elif op["action"] == "Sell":
+                    quantity -= op["quantity"]
+                    cost_total += -op["quantity"] * op["price"] + op["fee"]
                 else:
                     found_dividend = True
                     # Remove Dividend from the cost
