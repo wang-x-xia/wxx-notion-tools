@@ -1,4 +1,5 @@
 from datetime import datetime, date
+from typing import TypedDict, Literal, NotRequired
 
 from notion_client import Client
 
@@ -64,6 +65,59 @@ def query_all_by_database(notion: Client, db_id: str, db_filter=None):
             cursor = result["next_cursor"]
             continue
         return pages
+
+
+class InputPropertyObject(TypedDict):
+    type: Literal["rich_text", "number", "date", "select"]
+    number: NotRequired[dict]
+    options: NotRequired[list]
+    date: NotRequired[dict]
+    rich_text: NotRequired[dict]
+    select: NotRequired[dict]
+
+
+def text_property() -> InputPropertyObject:
+    return {"type": "rich_text", "rich_text": {}}
+
+
+def percent_property() -> InputPropertyObject:
+    return number_property("percent")
+
+
+def number_property(number_format: str = "number") -> InputPropertyObject:
+    return {"type": "number", "number": {"format": number_format}}
+
+
+def date_property() -> InputPropertyObject:
+    return {"type": "date", "date": {}}
+
+
+def select_property(*options: dict) -> InputPropertyObject:
+    return {"type": "select", "select": {"options": options}}
+
+
+def assert_database_properties(notion: Client, db_id: str, inputs: dict[str, InputPropertyObject]):
+    db_def = notion.databases.retrieve(db_id)
+    title = merge_rich_text(db_def["title"])
+    properties = db_def["properties"]
+
+    updates = {}
+    for key in inputs:
+        required = inputs[key]
+        if key not in properties:
+            updates[key] = required
+            continue
+        existed = properties[key]
+        if existed["type"] != required["type"]:
+            print("Found unmatched type", title, key, existed, required)
+            raise RuntimeError("Invalid type")
+        if required["type"] == "number":
+            if "number" in required and required["number"] != existed["number"]:
+                updates[key] = required
+
+    if len(updates):
+        print("Modify properties", title, updates)
+        notion.databases.update(db_id, properties=updates)
 
 
 def build_date(input_date: date):
