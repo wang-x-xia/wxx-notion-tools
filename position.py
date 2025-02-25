@@ -1,10 +1,9 @@
-import json
 import os
 
 from notion_client import Client
 
 from config import Config
-from data import Buy
+from data import load_buys, load_dividends, load_sells, Buy, Sell, Dividend
 from notion_utils import get_number_prop, assert_database_properties, \
     percent_property, text_property, \
     number_property, query_all_by_database, match_all, match_full_text, build_rich_text, build_number
@@ -34,28 +33,43 @@ def update_position(notion: Client, config: Config):
         update_code_position(notion, config, code)
 
 
+def load_current_position(buy: Buy, sells: list[Sell], dividends: list[Dividend]):
+    new_buy = buy.model_dump()
+    for sell in sells:
+        if buy.id in sell.quantityOfBuys:
+            new_buy["quantity"] -= sell.quantityOfBuys[buy.id]
+    for dividend in dividends:
+        if buy.id in dividend.quantityOfBuys:
+            new_buy["price"] -= dividend.dividend
+    return Buy.model_validate(new_buy)
+
+
 def update_code_position(notion: Client, config: Config, code: str):
-    with open(f"data/{config['dataFolder']}/{code}/buy.json", "r") as f:
-        for buy in json.load(f):
-            buy = Buy.model_validate_json(json.dumps(buy))
-            pages = query_all_by_database(
-                notion, config["positionDatabaseID"],
-                match_all(match_full_text("Code", code), match_full_text("BuyId", buy.id)))
-            if len(pages) > 1:
-                print("Found pages with same code and buy id", pages)
-                raise Exception("Too many pages of buy id")
-            if len(pages) == 0:
-                page = notion.pages.create(
-                    parent={"database_id": config["positionDatabaseID"]},
-                    properties={
-                        "Code": build_rich_text(code),
-                        "BuyId": build_rich_text(buy.id),
-                        "Cost": build_number(buy.price),
-                        "Quantity": build_number(buy.quantity),
-                    })
-            else:
-                page = pages[0]
-            update_dividend(notion, page, config, code)
+    dividends = load_dividends(config, code)
+    sells = load_sells(config, code)
+    for buy in load_buys(config, code):
+        buy = load_current_position(buy, sells, dividends)
+        pages = query_all_by_database(
+            notion, config["positionDatabaseID"],
+            match_all(match_full_text("Code", code), match_full_text("BuyId", buy.id)))
+        if len(pages) > 1:
+            print("Found pages with same code and buy id", pages)
+            raise Exception("Too many pages of buy id")
+        if len(pages) == 0:
+            page = notion.pages.create(
+                parent={"database_id": config["positionDatabaseID"]},
+                properties={
+                    "Code": build_rich_text(code),
+                    "BuyId": build_rich_text(buy.id),
+                    "Cost": build_number(buy.price),
+                    "Quantity": build_number(buy.quantity),
+                })
+        else:
+            page = pages[0]
+            notion.pages.update(page["id"], properties={
+                "Cost": build_number(buy.price),
+                "Quantity": build_number(buy.quantity)})
+        update_dividend(notion, page, config, code)
 
 
 def update_dividend(notion: Client, page, config: Config, code: str):
