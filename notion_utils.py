@@ -67,6 +67,14 @@ def query_all_by_database(notion: Client, db_id: str, db_filter=None):
         return pages
 
 
+def match_all(*args):
+    return {"and": args}
+
+
+def match_full_text(key, text):
+    return {"property": key, "rich_text": {"equals": text}}
+
+
 class InputPropertyObject(TypedDict):
     type: Literal["rich_text", "number", "date", "select"]
     number: NotRequired[dict]
