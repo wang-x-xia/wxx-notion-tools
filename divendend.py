@@ -7,7 +7,7 @@ from config import Config
 from notion_utils import get_text_prop, get_number_prop, get_date_prop, query_all_by_database, build_rich_text, \
     build_date, build_select, build_number, assert_database_properties, percent_property, date_property, text_property, \
     number_property, select_property
-from stock import ticker, load_dividends
+from stock import ticker
 
 
 def update_stock_database(notion: Client, config: Config):
@@ -30,6 +30,7 @@ def update_stock_database(notion: Client, config: Config):
     })
     assert_database_properties(notion, config["activityDatabaseID"], {
         "Code": text_property(),
+        "Date": date_property(),
         "Price": price_property(),
         "Quantity": number_property(),
         "Action": select_property({
@@ -55,6 +56,11 @@ def update_stock_database(notion: Client, config: Config):
 
 
 def update_stock(notion: Client, page, config: Config, code: str):
+    update_cost(notion, page, config, code)
+    update_dividend(notion, page, config, code)
+
+
+def update_dividend(notion: Client, page, config: Config, code: str):
     data = ticker(config, code)
     # load data
     data.history(period="1y")
@@ -78,7 +84,7 @@ def update_stock(notion: Client, page, config: Config, code: str):
     updated_properties["Dividend%"] = {"number": dividend_percent(price)}
 
     # Dividend % of cost
-    cost = update_and_cost(notion, page, config, code)
+    cost = get_number_prop(page, "Cost")
     if cost is not None:
         updated_properties["Cost Dividend%"] = {"number": dividend_percent(cost)}
 
@@ -129,7 +135,12 @@ def create_operation(notion: Client, config: Config, code: str, op_date: date,
     })
 
 
-def update_and_cost(notion: Client, page, config: Config, code: str):
+def update_cost(notion: Client, page, config: Config, code: str):
+    """
+    Based on operations to update cost.
+
+    The Cost Date
+    """
     start = get_date_prop(page, "Cost Date")
     if start is None:
         print("Code", code, "load all operations to get cost")
@@ -137,54 +148,38 @@ def update_and_cost(notion: Client, page, config: Config, code: str):
         operations = load_operations(notion, config, code)
         if len(operations) == 0:
             print("Code", code, "has no operation")
-            return None
+            return
         start = min(operations.keys())
         quantity = 0
         cost_total = 0
     elif start == date.today() - timedelta(days=1):
         print("Skip to update yesterday's cost")
-        return get_number_prop(page, "Cost")
+        return
     else:
         quantity = get_number_prop(page, "Quantity")
         cost_total = get_number_prop(page, "Cost") * quantity
         operations = load_operations(notion, config, code, start=start)
 
     print("Start from", start)
-    # Load Dividends
-    dividends = load_dividends(config, code, start=start)
-    print("Found dividends", len(dividends))
-    if len(dividends) > 0:
-        current = start
-        while current < date.today() - timedelta(days=1):
-            found_dividend = False
+    current = start
+    while current < date.today() - timedelta(days=1):
+        if current in operations:
+            for op in operations[current]:
+                if op["action"] == "Buy":
+                    quantity += op["quantity"]
+                    cost_total += op["quantity"] * op["price"] + op["fee"]
+                elif op["action"] == "Sell":
+                    quantity -= op["quantity"]
+                    cost_total += -op["quantity"] * op["price"] + op["fee"]
+                else:
+                    # Remove Dividend from the cost
+                    cost_total += -op["quantity"] * op["price"] + op["fee"]
 
-            if current in operations:
-                for op in operations[current]:
-                    if op["action"] == "Buy":
-                        quantity += op["quantity"]
-                        cost_total += op["quantity"] * op["price"] + op["fee"]
-                    elif op["action"] == "Sell":
-                        quantity -= op["quantity"]
-                        cost_total += -op["quantity"] * op["price"] + op["fee"]
-                    else:
-                        found_dividend = True
-                        # Remove Dividend from the cost
-                        cost_total += -op["quantity"] * op["price"] + op["fee"]
+        current = current + timedelta(days=1)
 
-            if not found_dividend and current in dividends:
-                dividend = dividends[current]
-                # Use 20% as default tax
-                print("Update dividend to db", current, quantity, dividend)
-                create_operation(notion, config, code, current, "Dividend", quantity, dividend,
-                                 quantity * dividend * config["taxRate"])
-                cost_total -= quantity * dividend * (1 - config["taxRate"])
-
-            current = current + timedelta(days=1)
-
-        print("Update Cost to page")
-        notion.pages.update(page["id"], properties={
-            "Cost": build_number(cost_total / quantity),
-            "Quantity": build_number(quantity),
-            "Cost Date": build_date(current),
-        })
-        return cost_total / quantity
+    print("Update Cost to page")
+    notion.pages.update(page["id"], properties={
+        "Cost": build_number(cost_total / quantity),
+        "Quantity": build_number(quantity),
+        "Cost Date": build_date(current),
+    })

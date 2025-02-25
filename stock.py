@@ -18,6 +18,8 @@ def ticker(config: Config, code: str):
             "50": ".SS",
             "18": ".SZ",
         }[code[0:2]]
+    elif config["name"] == "CN_HK":
+        code = f"{code}.HK"
     session = requests.Session()
     if proxy() is not None:
         session.proxies = {"https": proxy()}
