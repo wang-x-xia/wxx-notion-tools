@@ -34,6 +34,6 @@ def get_cn_hk_config() -> Config:
         "positionDatabaseID": "1a553f8b429a8028ab38e528860503d9",
         "planDatabaseID": "",
         "currencyFormat": "hong_kong_dollar",
-        "taxRate": 0,
+        "taxRate": 0.2,
         "dataFolder": "hk_cn",
     }

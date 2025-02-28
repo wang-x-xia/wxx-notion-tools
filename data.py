@@ -36,7 +36,6 @@ class Dividend(BaseModel):
     date: date
     quantity: float
     dividend: float
-    fee: float
     # Key is the buy id
     quantityOfBuys: dict[str, float]
 
