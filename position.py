@@ -5,8 +5,8 @@ from notion_client import Client
 from config import Config
 from data import load_buys, load_dividends, load_sells, Buy, Sell, Dividend
 from notion_utils import get_number_prop, assert_database_properties, \
-    percent_property, text_property, \
-    number_property, query_all_by_database, match_all, match_full_text, build_rich_text, build_number
+    text_property, \
+    number_property, query_all_by_database, match_all, match_full_text, build_rich_text, build_number, percent_property
 from stock import ticker
 
 
@@ -19,14 +19,8 @@ def update_position(notion: Client, config: Config):
         "BuyId": text_property(),
         "Price": price_property(),
         "Quantity": number_property(),
-        "Dividend/Y": price_property(),
-        "Dividend%": percent_property(),
-        "Cost": price_property(),
-        "Cost Dividend%": percent_property(),
-        "Low": price_property(),
-        "Low Dividend%": percent_property(),
-        "High": price_property(),
-        "High Dividend%": percent_property(),
+        "Market Value": price_property(),
+        ">Avg%": percent_property(),
     })
     folder = config["dataFolder"]
     for code in os.listdir(f"data/{folder}"):
@@ -45,31 +39,36 @@ def load_current_position(buy: Buy, sells: list[Sell], dividends: list[Dividend]
 
 
 def update_code_position(notion: Client, config: Config, code: str):
+    print("Process position", code)
     dividends = load_dividends(config, code)
     sells = load_sells(config, code)
-    for buy in load_buys(config, code):
-        buy = load_current_position(buy, sells, dividends)
+    buys = load_buys(config, code)
+    buys = [load_current_position(buy, sells, dividends) for buy in buys]
+    buys = [buy for buy in buys if buy.quantity != 0]
+    average_price = sum(buy.quantity * buy.price for buy in buys) / sum(buy.quantity for buy in buys)
+    for buy in buys:
         pages = query_all_by_database(
             notion, config["positionDatabaseID"],
             match_all(match_full_text("Code", code), match_full_text("BuyId", buy.id)))
         if len(pages) > 1:
             print("Found pages with same code and buy id", pages)
             raise Exception("Too many pages of buy id")
+        update_properties = {
+            "Price": build_number(buy.price),
+            "Quantity": build_number(buy.quantity),
+            "Market Value": build_number(buy.quantity * buy.price),
+            ">Avg%": build_number(round(buy.price / average_price - 1, 4)),
+        }
         if len(pages) == 0:
             page = notion.pages.create(
                 parent={"database_id": config["positionDatabaseID"]},
-                properties={
+                properties=dict(**{
                     "Code": build_rich_text(code),
                     "BuyId": build_rich_text(buy.id),
-                    "Cost": build_number(buy.price),
-                    "Quantity": build_number(buy.quantity),
-                })
+                }, **update_properties))
         else:
             page = pages[0]
-            notion.pages.update(page["id"], properties={
-                "Cost": build_number(buy.price),
-                "Quantity": build_number(buy.quantity)})
-        update_dividend(notion, page, config, code)
+            notion.pages.update(page["id"], properties=update_properties)
 
 
 def update_dividend(notion: Client, page, config: Config, code: str):
