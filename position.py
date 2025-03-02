@@ -41,9 +41,9 @@ def load_current_position(buy: Buy, sells: list[Sell], dividends: list[Dividend]
 
 def update_code_position(notion: Client, config: Config, code: str):
     print("Process position", code)
-    dividends = load_dividends(config, code)
-    sells = load_sells(config, code)
     buys = load_buys(config, code)
+    dividends = load_dividends(config, code, buys=buys)
+    sells = load_sells(config, code, buys=buys)
     buys = [load_current_position(buy, sells, dividends, config) for buy in buys]
     buys = [buy for buy in buys if buy.quantity != 0]
     average_price = sum(buy.quantity * buy.price for buy in buys) / sum(buy.quantity for buy in buys)

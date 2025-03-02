@@ -13,6 +13,7 @@ class Config(TypedDict):
 
 def get_configs() -> list[Config]:
     return [
+        get_cn_config(),
         get_cn_hk_config(),
     ]
 
