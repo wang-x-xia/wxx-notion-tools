@@ -76,12 +76,13 @@ def match_full_text(key, text):
 
 
 class InputPropertyObject(TypedDict):
-    type: Literal["rich_text", "number", "date", "select"]
+    type: Literal["rich_text", "number", "date", "select", "formula"]
     number: NotRequired[dict]
     options: NotRequired[list]
     date: NotRequired[dict]
     rich_text: NotRequired[dict]
     select: NotRequired[dict]
+    formula: NotRequired[dict]
 
 
 def text_property() -> InputPropertyObject:
@@ -104,6 +105,10 @@ def select_property(*options: dict) -> InputPropertyObject:
     return {"type": "select", "select": {"options": options}}
 
 
+def formula_property(expression: str) -> InputPropertyObject:
+    return {"type": "formula", "formula": {"expression": expression}}
+
+
 def assert_database_properties(notion: Client, db_id: str, inputs: dict[str, InputPropertyObject]):
     db_def = notion.databases.retrieve(db_id)
     title = merge_rich_text(db_def["title"])
@@ -121,6 +126,9 @@ def assert_database_properties(notion: Client, db_id: str, inputs: dict[str, Inp
             raise RuntimeError("Invalid type")
         if required["type"] == "number":
             if "number" in required and required["number"] != existed["number"]:
+                updates[key] = required
+        if required["type"] == "formula":
+            if required["formula"]["expression"] != required["formula"]["expression"]:
                 updates[key] = required
 
     if len(updates):

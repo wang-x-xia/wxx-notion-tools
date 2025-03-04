@@ -6,7 +6,7 @@ from config import Config
 from data import load_buys, load_dividends, load_sells, Buy, Sell, Dividend
 from notion_utils import get_number_prop, assert_database_properties, text_property, number_property, \
     query_all_by_database, match_all, match_full_text, build_rich_text, build_number, percent_property, date_property, \
-    build_date
+    build_date, formula_property
 from stock import ticker
 
 
@@ -22,6 +22,8 @@ def update_position(notion: Client, config: Config):
         "Quantity": number_property(),
         "Market Value": price_property(),
         ">Avg%": percent_property(),
+        "Target%": percent_property(),
+        "Sell Price": formula_property('prop("Price") * (1 + prop("Target%"))'),
     })
     folder = config["dataFolder"]
     for code in os.listdir(f"data/{folder}"):
@@ -46,6 +48,8 @@ def update_code_position(notion: Client, config: Config, code: str):
     sells = load_sells(config, code, buys=buys)
     buys = [load_current_position(buy, sells, dividends, config) for buy in buys]
     buys = [buy for buy in buys if buy.quantity != 0]
+    if len(buys) == 0:
+        return
     average_price = sum(buy.quantity * buy.price for buy in buys) / sum(buy.quantity for buy in buys)
     for buy in buys:
         pages = query_all_by_database(
@@ -67,6 +71,7 @@ def update_code_position(notion: Client, config: Config, code: str):
                 properties=dict(**{
                     "Code": build_rich_text(code),
                     "BuyId": build_rich_text(buy.id),
+                    "Target%": build_number(0.05),
                 }, **update_properties))
         else:
             page = pages[0]
