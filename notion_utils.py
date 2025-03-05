@@ -165,5 +165,12 @@ def build_rich_text(value: str):
     }]}
 
 
+def build_title(value: str):
+    return {"title": [{
+        "type": "text",
+        "text": {"content": value}
+    }]}
+
+
 def build_select(option: str):
     return {"select": {"name": option, }}

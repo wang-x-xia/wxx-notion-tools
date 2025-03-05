@@ -2,7 +2,7 @@ from notion_client import Client
 
 from config import Config, price_property
 from notion_utils import number_property, text_property, assert_database_properties, formula_property, \
-    match_full_text, build_number, build_rich_text, update_or_create_in_database, percent_property
+    match_full_text, build_number, build_rich_text, update_or_create_in_database, percent_property, build_title
 from position import Position
 
 
@@ -30,6 +30,7 @@ def update_plan(notion: Client, config: Config, positions: dict[str, Position]):
             notion, config["planDatabaseID"],
             db_filter=match_full_text("Code", code),
             creates={
+                "Name": build_title(position.name),
                 "Code": build_rich_text(code),
                 "-Buy%": build_number(0.03),
             },

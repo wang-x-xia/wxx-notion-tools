@@ -7,11 +7,13 @@ from config import Config
 from data import load_stock, Buy
 from notion_utils import get_number_prop, assert_database_properties, text_property, number_property, \
     match_all, match_full_text, build_rich_text, build_number, percent_property, date_property, \
-    build_date, formula_property, update_or_create_in_database
+    build_date, formula_property, update_or_create_in_database, build_title
 from stock import ticker
 
 
 class Position(BaseModel):
+    name: str
+    code: str
     quantity: float
     avgPrice: float
     items: list["PositionItem"]
@@ -58,6 +60,7 @@ def update_and_get_code_position(notion: Client, config: Config, code: str) -> P
             notion, config["positionDatabaseID"],
             db_filter=match_all(match_full_text("Code", code), match_full_text("BuyId", position.id)),
             creates={
+                "Name": build_title(stock.name),
                 "Code": build_rich_text(code),
                 "BuyId": build_rich_text(position.id),
                 "Target%": build_number(0.05),
@@ -73,7 +76,7 @@ def update_and_get_code_position(notion: Client, config: Config, code: str) -> P
         if position.quantity != 0:
             positions.append(PositionItem(buy=position, sellPrice=get_number_prop(page, "Sell Price", 0)))
 
-    return Position(quantity=total_quantity, avgPrice=average_price, items=positions)
+    return Position(name=stock.name, code=code, quantity=total_quantity, avgPrice=average_price, items=positions)
 
 
 def update_dividend(notion: Client, page, config: Config, code: str):

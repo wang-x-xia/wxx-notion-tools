@@ -1,5 +1,6 @@
 import json
 from datetime import date
+from os import listdir
 
 from pydantic import BaseModel, TypeAdapter
 
@@ -66,7 +67,7 @@ def load_sells(config: Config, code: str, buys: list[Buy] = None) -> list[Sell]:
             by_id_buys[buyId] -= sell.quantityOfBuys[buyId]
             if by_id_buys[buyId] < 0:
                 print("Got negative position", sell, buyId)
-                raise RuntimeError("Invalid BuyId in Sell")
+                raise RuntimeError("Got negative position")
     return sells
 
 
@@ -88,6 +89,8 @@ def load_dividends(config: Config, code: str, buys: list[Buy] = None) -> list[Di
 
 
 class Stock(BaseModel):
+    name: str
+    code: str
     positions: list[Buy]
     buys: list[Buy]
     sells: list[Sell]
@@ -95,11 +98,14 @@ class Stock(BaseModel):
 
 
 def load_stock(config: Config, code: str) -> Stock:
+    files = listdir(f"data/{config['dataFolder']}/{code}/")
+    files = [f for f in files if not f.endswith(".json")]
+    name = files[0]
     buys = load_buys(config, code)
     sells = load_sells(config, code, buys)
     dividends = load_dividends(config, code, buys)
     positions = [load_current_position(buy, sells, dividends, config) for buy in buys]
-    return Stock(positions=positions, buys=buys, sells=sells, dividends=dividends)
+    return Stock(name=name, code=code, positions=positions, buys=buys, sells=sells, dividends=dividends)
 
 
 def load_current_position(buy: Buy, sells: list[Sell], dividends: list[Dividend], config: Config):
