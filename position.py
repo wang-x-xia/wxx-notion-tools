@@ -3,7 +3,7 @@ import os
 from notion_client import Client
 
 from config import Config
-from data import load_buys, load_dividends, load_sells, Buy, Sell, Dividend
+from data import load_stock
 from notion_utils import get_number_prop, assert_database_properties, text_property, number_property, \
     query_all_by_database, match_all, match_full_text, build_rich_text, build_number, percent_property, date_property, \
     build_date, formula_property
@@ -30,47 +30,32 @@ def update_position(notion: Client, config: Config):
         update_code_position(notion, config, code)
 
 
-def load_current_position(buy: Buy, sells: list[Sell], dividends: list[Dividend], config: Config):
-    new_buy = buy.model_dump()
-    for sell in sells:
-        if buy.id in sell.quantityOfBuys:
-            new_buy["quantity"] -= sell.quantityOfBuys[buy.id]
-    for dividend in dividends:
-        if buy.id in dividend.quantityOfBuys:
-            new_buy["price"] -= dividend.dividend * (1 - config["taxRate"])
-    return Buy.model_validate(new_buy)
-
-
 def update_code_position(notion: Client, config: Config, code: str):
     print("Process position", code)
-    buys = load_buys(config, code)
-    dividends = load_dividends(config, code, buys=buys)
-    sells = load_sells(config, code, buys=buys)
-    buys = [load_current_position(buy, sells, dividends, config) for buy in buys]
-    buys = [buy for buy in buys if buy.quantity != 0]
-    if len(buys) == 0:
-        return
-    average_price = sum(buy.quantity * buy.price for buy in buys) / sum(buy.quantity for buy in buys)
-    for buy in buys:
+    stock = load_stock(config, code)
+    total_quantity = sum(buy.quantity for buy in stock.positions)
+    average_price = (sum(buy.quantity * buy.price for buy in stock.positions) / total_quantity) \
+        if total_quantity != 0 else 0
+    for position in stock.positions:
         pages = query_all_by_database(
             notion, config["positionDatabaseID"],
-            match_all(match_full_text("Code", code), match_full_text("BuyId", buy.id)))
+            match_all(match_full_text("Code", code), match_full_text("BuyId", position.id)))
         if len(pages) > 1:
             print("Found pages with same code and buy id", pages)
             raise Exception("Too many pages of buy id")
         update_properties = {
-            "Date": build_date(buy.date),
-            "Price": build_number(buy.price),
-            "Quantity": build_number(buy.quantity),
-            "Market Value": build_number(buy.quantity * buy.price),
-            ">Avg%": build_number(round(buy.price / average_price - 1, 4)),
+            "Date": build_date(position.date),
+            "Price": build_number(position.price),
+            "Quantity": build_number(position.quantity),
+            "Market Value": build_number(position.quantity * position.price),
+            ">Avg%": build_number(round(position.price / average_price - 1, 4) if average_price != 0 else 0),
         }
         if len(pages) == 0:
             page = notion.pages.create(
                 parent={"database_id": config["positionDatabaseID"]},
                 properties=dict(**{
                     "Code": build_rich_text(code),
-                    "BuyId": build_rich_text(buy.id),
+                    "BuyId": build_rich_text(position.id),
                     "Target%": build_number(0.05),
                 }, **update_properties))
         else:

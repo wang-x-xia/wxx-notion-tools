@@ -85,3 +85,29 @@ def load_dividends(config: Config, code: str, buys: list[Buy] = None) -> list[Di
                 print("Invalid buy id in dividend", dividend, buyId)
                 raise RuntimeError("Invalid BuyId in Dividend")
     return dividends
+
+
+class Stock(BaseModel):
+    positions: list[Buy]
+    buys: list[Buy]
+    sells: list[Sell]
+    dividends: list[Dividend]
+
+
+def load_stock(config: Config, code: str) -> Stock:
+    buys = load_buys(config, code)
+    sells = load_sells(config, code, buys)
+    dividends = load_dividends(config, code, buys)
+    positions = [load_current_position(buy, sells, dividends, config) for buy in buys]
+    return Stock(positions=positions, buys=buys, sells=sells, dividends=dividends)
+
+
+def load_current_position(buy: Buy, sells: list[Sell], dividends: list[Dividend], config: Config):
+    new_buy = buy.model_dump()
+    for sell in sells:
+        if buy.id in sell.quantityOfBuys:
+            new_buy["quantity"] -= sell.quantityOfBuys[buy.id]
+    for d in dividends:
+        if buy.id in d.quantityOfBuys:
+            new_buy["price"] -= d.dividend * (1 - config["taxRate"])
+    return Buy.model_validate(new_buy)
