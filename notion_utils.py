@@ -34,9 +34,11 @@ def get_number_prop(page, key, default_value=None) -> int | float | None:
     prop = page["properties"][key]
     if prop["type"] == "number":
         return prop["number"]
-    else:
-        print(prop)
-        raise RuntimeError("Invalid number type in property")
+    elif prop["type"] == "formula":
+        if prop["formula"]["type"] == "number":
+            return prop["formula"]["number"]
+    print(prop)
+    raise RuntimeError("Invalid number type in property")
 
 
 def get_date_prop(page, key, default_value=None) -> date | None:
@@ -65,6 +67,18 @@ def query_all_by_database(notion: Client, db_id: str, db_filter=None):
             cursor = result["next_cursor"]
             continue
         return pages
+
+
+def update_or_create_in_database(notion: Client, db_id: str, *, db_filter, creates, updates):
+    pages = query_all_by_database(notion, db_id, db_filter=db_filter)
+    if len(pages) > 1:
+        print("Found pages with filter", db_id)
+        raise Exception("Too many pages")
+    if len(pages) == 0:
+        return notion.pages.create(parent={"database_id": db_id}, properties=dict(**creates, **updates))
+    else:
+        page = pages[0]
+        return notion.pages.update(page["id"], properties=updates)
 
 
 def match_all(*args):
